@@ -1,0 +1,5 @@
+# 개인 설계 저장 파일 (앱에서 생성)
+junglegym-design*.json
+# 에디터/도구
+.claude/
+.DS_Store

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>정글짐 3D 설계</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#1e2128" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="정글짐" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="style.css?v=74" />
+</head>
+<body>
+  <div id="app">
+    <!-- 좌측: 자재 팔레트 -->
+    <aside id="palette">
+      <h1>🧱 정글짐 설계</h1>
+
+      <section class="group">
+        <h2>보기</h2>
+        <div class="btn-row">
+          <button class="view-btn active" data-view="3d">🧊 3D 뷰</button>
+          <button class="view-btn" data-view="2d">✏️ 2D 그리기</button>
+        </div>
+        <div id="plane-row" class="btn-row" style="display:none; margin-top:8px;">
+          <button class="plane-btn active" data-plane="top">위(평면)</button>
+          <button class="plane-btn" data-plane="front">앞(정면)</button>
+          <button class="plane-btn" data-plane="side">옆(측면)</button>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2>모드</h2>
+        <div id="mode-buttons" class="btn-row">
+          <button class="mode-btn active" data-mode="pipe">🧵 파이프</button>
+          <button class="mode-btn" data-mode="cube">🧊 육면체</button>
+          <button class="mode-btn" data-mode="face">🟨 면</button>
+          <button class="mode-btn" data-mode="bridge">🌉 흔들다리</button>
+          <button class="mode-btn" data-mode="memo">📝 메모</button>
+          <button class="mode-btn" data-mode="select">🖱 선택</button>
+          <button class="mode-btn" data-mode="ruler">📏 줄자</button>
+          <button class="mode-btn" data-mode="mount">🧩 장착</button>
+        </div>
+        <div id="group-row" class="btn-row" style="display:none; margin-top:8px;">
+          <button id="btn-group" class="ghost">🔗 그룹 묶기</button>
+          <button id="btn-ungroup" class="ghost">그룹 해제</button>
+        </div>
+        <p class="note" id="dist-info" style="display:none;"></p>
+      </section>
+
+      <section class="group" id="mount-section" style="display:none;">
+        <h2>그룹 장착(연결)</h2>
+        <p class="note" id="mount-info"></p>
+        <button id="btn-mount-next" class="ghost full">다음 단계 ▶</button>
+        <p class="note">기존과 떨어진 그룹의 ①바닥 조인트 → ②연결 조인트 → ③붙일 대상 순으로 클릭하면, 바닥을 기준으로 기울여 붙입니다.</p>
+      </section>
+
+      <section class="group" id="ruler-section" style="display:none;">
+        <h2>줄자 방향</h2>
+        <div class="btn-row">
+          <button class="ruler-dir-btn active" data-dir="h">가로(자유)</button>
+          <button class="ruler-dir-btn" data-dir="a">직각(축)</button>
+          <button class="ruler-dir-btn" data-dir="v">세로(수직)</button>
+        </div>
+        <p class="note" id="ruler-dir-hint">바닥을 드래그해 선을 긋고 길이를 입력하세요.</p>
+      </section>
+
+      <section class="group">
+        <h2>파이프 길이 <span class="sub-h">／ 육면체 한 변</span></h2>
+        <p class="hint" id="len-hint">길이를 고르고, 조인트를 클릭하면 방향 화살표가 나옵니다. 화살표를 클릭해 연결하세요.</p>
+        <div id="pipe-buttons" class="btn-row"></div>
+        <div class="height-wrap">
+          <div class="height-label">육면체 높이</div>
+          <div id="height-buttons" class="btn-row"></div>
+        </div>
+      </section>
+
+      <section class="group" id="edit-section" style="display:none;">
+        <h2>선택 파이프 길이 변경</h2>
+        <p class="hint" id="edit-count"></p>
+        <div id="edit-len-buttons" class="btn-row"></div>
+        <p class="note">육면체는 같은 방향 파이프를 함께 선택해 바꾸면 형태가 유지됩니다.</p>
+      </section>
+
+      <section class="group">
+        <h2>템플릿</h2>
+        <p class="hint">선택한 파이프 길이 기준으로 완성된 구조를 불러옵니다.</p>
+        <div id="template-buttons" class="tpl-list"></div>
+      </section>
+
+      <section class="group">
+        <h2>크기로 생성</h2>
+        <p class="hint">목표 크기(cm)를 입력하면 가장 가까운 격자를 자동 구성합니다.</p>
+        <div class="size-row">
+          <input id="size-w" type="number" placeholder="가로" min="15" />
+          <input id="size-d" type="number" placeholder="세로" min="15" />
+          <input id="size-h" type="number" placeholder="높이" min="15" />
+        </div>
+        <button id="btn-generate" class="ghost full">이 크기로 생성</button>
+      </section>
+
+      <section class="group">
+        <h2>조작</h2>
+        <ul class="hint">
+          <li>드래그 = 회전 · 휠 = 확대/축소 · 우클릭 드래그 = 이동</li>
+          <li>조인트 클릭 = 방향 화살표 표시 → 화살표 클릭해 배치</li>
+          <li>파이프/조인트 클릭 = 선택 → <b>Delete</b> 또는 삭제 버튼</li>
+          <li>빈 곳 클릭 = 선택 해제 · 화살표 닫기</li>
+        </ul>
+        <div class="btn-row">
+          <button id="btn-delete" class="ghost">선택 삭제</button>
+          <button id="btn-reset" class="ghost">전체 초기화</button>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2>저장 / 불러오기</h2>
+        <div class="btn-row">
+          <button id="btn-export" class="ghost">💾 저장(덮어쓰기)</button>
+          <button id="btn-import" class="ghost">JSON 열기</button>
+        </div>
+        <button id="btn-load-last" class="ghost full">🕘 최근 없음</button>
+        <p class="note" id="file-label"></p>
+        <input type="file" id="file-input" accept="application/json" hidden />
+      </section>
+    </aside>
+
+    <!-- 중앙: 3D 뷰포트 -->
+    <main id="viewport">
+      <div id="place-banner"><span id="place-banner-text"></span></div>
+    </main>
+
+    <!-- 우측: 치수 + 부품 개수 -->
+    <aside id="bom">
+      <section class="group">
+        <h2>📐 최종 치수</h2>
+        <div id="dims" class="dims"></div>
+        <p class="note">치수는 조인트 마감 여유(축당 +5cm) 포함. 축 길이는 조인트 중심 기준입니다.</p>
+      </section>
+
+      <section class="group">
+        <h2>📦 사용 부품</h2>
+        <div id="bom-pipes"></div>
+        <div id="bom-joints"></div>
+        <div id="bom-panels"></div>
+        <div id="bom-bridges"></div>
+        <div id="bom-total" class="total"></div>
+        <button id="btn-copy" class="ghost full">BOM 텍스트 복사</button>
+      </section>
+
+      <section class="group">
+        <h2>조인트 판정 규칙</h2>
+        <p class="note">
+          조인트는 한 지점에 꽂힌 파이프의 개수·방향으로 결정됩니다.<br />
+          1개 → 마감캡 · 2개 일직선 → 1자 · 2개 꺾임 → ㄱ자<br />
+          3개 T형(일직선+수직) → T자 · 3개 직각코너 → 3구<br />
+          4개 → 4구 · 5개 → 5구 · 6개 → 6구
+        </p>
+      </section>
+    </aside>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+  <script src="app.js?v=74"></script>
+</body>
+</html>
