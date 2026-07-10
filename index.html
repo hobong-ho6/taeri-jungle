@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="정글짐" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=74" />
+  <link rel="stylesheet" href="style.css?v=77" />
 </head>
 <body>
   <div id="app">
@@ -38,7 +38,9 @@
           <button class="mode-btn active" data-mode="pipe">🧵 파이프</button>
           <button class="mode-btn" data-mode="cube">🧊 육면체</button>
           <button class="mode-btn" data-mode="face">🟨 면</button>
+          <button class="mode-btn" data-mode="holeface">🕳 구멍면</button>
           <button class="mode-btn" data-mode="bridge">🌉 흔들다리</button>
+          <button class="mode-btn" data-mode="slide">🛝 미끄럼틀</button>
           <button class="mode-btn" data-mode="memo">📝 메모</button>
           <button class="mode-btn" data-mode="select">🖱 선택</button>
           <button class="mode-btn" data-mode="ruler">📏 줄자</button>
@@ -147,6 +149,7 @@
         <div id="bom-joints"></div>
         <div id="bom-panels"></div>
         <div id="bom-bridges"></div>
+        <div id="bom-slides"></div>
         <div id="bom-total" class="total"></div>
         <button id="btn-copy" class="ghost full">BOM 텍스트 복사</button>
       </section>
@@ -167,6 +170,6 @@
 
   <script src="vendor/three.min.js"></script>
   <script src="vendor/OrbitControls.js"></script>
-  <script src="app.js?v=74"></script>
+  <script src="app.js?v=77"></script>
 </body>
 </html>

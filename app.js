@@ -26,6 +26,7 @@ let joints = [];   // {id, x, y, z}
 let pipes = [];    // {id, a, b, length, axis}
 let panels = [];   // {id, c:[id0,id1,id2,id3]} — 사각형 순서대로의 조인트 4개
 let bridges = [];  // {id, c:[id0,id1,id2,id3]} — 수평 면 위의 흔들다리
+let slides = [];   // {id, c:[id0,id1,id2,id3]} — 네 조인트에 걸친 미끄럼틀
 let notes = [];    // {id, x, y, z, text} — 설계 메모
 let rulers = [];   // {id, ...3D 끝점, length} — 줄자
 let groups = [];   // {id, m:[{type,id}]} — 오브젝트 그룹
@@ -133,6 +134,16 @@ function bridgeExists(cornerIds) { const k = faceKey(cornerIds); return bridges.
 function bridgeValid(b) { return b.c.length === 4 && b.c.every(id => joints.some(j => j.id === id)); }
 function bridgeSpan(b) {   // 두 변 길이(정렬, cm)
   const c = b.c.map(getJoint);
+  if (c.some(x => !x)) return [0, 0];
+  const d = (P, Q) => Math.round(Math.hypot(P.x - Q.x, P.y - Q.y, P.z - Q.z));
+  const e1 = d(c[0], c[1]), e2 = d(c[1], c[2]);
+  return [Math.min(e1, e2), Math.max(e1, e2)];
+}
+// 미끄럼틀: 4개 조인트(사각형)에 걸친 경사판 (흔들다리와 동일 규격, 모양만 다름)
+function slideExists(cornerIds) { const k = faceKey(cornerIds); return slides.some(s => faceKey(s.c) === k); }
+function slideValid(s) { return s.c.length === 4 && s.c.every(id => joints.some(j => j.id === id)); }
+function slideSpan(s) {
+  const c = s.c.map(getJoint);
   if (c.some(x => !x)) return [0, 0];
   const d = (P, Q) => Math.round(Math.hypot(P.x - Q.x, P.y - Q.y, P.z - Q.z));
   const e1 = d(c[0], c[1]), e2 = d(c[1], c[2]);
@@ -420,6 +431,40 @@ function quadMesh(cornerJoints, material, scale) {
   return new THREE.Mesh(geo, material);
 }
 
+// 가운데가 원형으로 뚫린 사각형 면. 면 평면의 2D 기저에서 Shape(구멍 포함)를 만든 뒤 3D로 되돌린다.
+function holedQuadMesh(cornerJoints, material, scale) {
+  const c = cornerJoints.map(j => new THREE.Vector3(j.x, j.y, j.z));
+  const center = c.reduce((a, v) => a.add(v.clone()), new THREE.Vector3()).multiplyScalar(0.25);
+  const v = c.map(p => center.clone().add(p.clone().sub(center).multiplyScalar(scale)));
+  // 평면 기저 (u = 첫 변, n = 법선, w = n×u) — u,w 는 면 위의 직교 좌표축
+  const u = v[1].clone().sub(v[0]).normalize();
+  let n = v[1].clone().sub(v[0]).cross(v[3].clone().sub(v[0]));
+  if (n.length() < 1e-4) n = new THREE.Vector3(0, 1, 0);
+  n.normalize();
+  const w = n.clone().cross(u).normalize();
+  const to2d = p => new THREE.Vector2(p.clone().sub(center).dot(u), p.clone().sub(center).dot(w));
+  const p2 = v.map(to2d);
+  const shape = new THREE.Shape();
+  shape.moveTo(p2[0].x, p2[0].y);
+  for (let i = 1; i < 4; i++) shape.lineTo(p2[i].x, p2[i].y);
+  shape.closePath();
+  const r = Math.min(p2[0].distanceTo(p2[1]), p2[1].distanceTo(p2[2])) * 0.3;   // 짧은 변의 30%
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, r, 0, Math.PI * 2, false);   // 중앙(=면 중심) 원형 구멍
+  shape.holes.push(hole);
+  const geo = new THREE.ShapeGeometry(shape);
+  // 2D(x,y) → 3D: center + x·u + y·w
+  const src = geo.attributes.position.array;
+  const out = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i += 3) {
+    const P = center.clone().add(u.clone().multiplyScalar(src[i])).add(w.clone().multiplyScalar(src[i + 1]));
+    out[i] = P.x; out[i + 1] = P.y; out[i + 2] = P.z;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, material);
+}
+
 // 작은 화살표(샤프트 + 머리) 생성 — 로컬 +Y를 dirVec 방향으로 회전
 const ARROW_UP = new THREE.Vector3(0, 1, 0);
 const SHAFT_GEO = new THREE.CylinderGeometry(0.6, 0.6, 6, 10);
@@ -472,6 +517,7 @@ function rebuild() {
   // 깨진 면(파이프/조인트 삭제로 사각형이 무너진 경우) 정리
   panels = panels.filter(panelValid);
   bridges = bridges.filter(bridgeValid);   // 흔들다리: 임의 크기 닫힌 사각형(변=파이프체인)
+  slides = slides.filter(slideValid);      // 미끄럼틀: 네 조인트 유효성 확인
   pruneGroups();                           // 사라진 멤버 정리
 
   // 기존 메쉬 제거
@@ -528,7 +574,7 @@ function rebuild() {
       transparent: true, opacity: 0.55, side: THREE.DoubleSide,
       metalness: 0.05, roughness: 0.7,
     });
-    const mesh = quadMesh(panel.c.map(getJoint), mat, 0.9);
+    const mesh = (panel.hole ? holedQuadMesh : quadMesh)(panel.c.map(getJoint), mat, 0.9);
     mesh.userData = { type: 'panel', id: panel.id };
     partsGroup.add(mesh);
   }
@@ -538,6 +584,15 @@ function rebuild() {
     const isSel = isSelected('bridge', bridge.id);
     for (const m of bridgeMeshes(bridge, isSel)) {
       m.userData = { type: 'bridge', id: bridge.id };
+      partsGroup.add(m);
+    }
+  }
+
+  // 미끄럼틀
+  for (const slide of slides) {
+    const isSel = isSelected('slide', slide.id);
+    for (const m of slideMeshes(slide, isSel)) {
+      m.userData = { type: 'slide', id: slide.id };
       partsGroup.add(m);
     }
   }
@@ -580,6 +635,36 @@ function bridgeMeshes(bridge, isSel) {
   return meshes.filter(Boolean);
 }
 
+// 미끄럼틀 메쉬: 4꼭짓점 사각형을 채운 경사 미끄럼판 + 양옆 난간
+function slideMeshes(slide, isSel) {
+  const P = slide.c.map(getJoint);
+  if (P.some(x => !x)) return [];
+  const p = P.map(j => new THREE.Vector3(j.x, j.y, j.z));
+  const meshes = [];
+  // 미끄럼판(사각형 면)
+  const surfMat = new THREE.MeshStandardMaterial({
+    color: isSel ? 0x4aa3ff : 0x5ec5e8,
+    emissive: isSel ? 0x1a4a80 : 0x000000,
+    metalness: 0.1, roughness: 0.45, side: THREE.DoubleSide,
+  });
+  meshes.push(quadMesh(P, surfMat, 0.98));
+  // 경사 방향(세로 낙차가 큰 변 쌍)을 따라 양옆 난간을 세운다
+  const eA = p[1].clone().sub(p[0]), eB = p[3].clone().sub(p[0]);
+  const railEdges = Math.abs(eA.y) >= Math.abs(eB.y) ? [[0, 1], [3, 2]] : [[0, 3], [1, 2]];
+  const railMat = new THREE.MeshStandardMaterial({ color: isSel ? 0x2b8fd0 : 0x3792bf, roughness: 0.55 });
+  for (const [i, j] of railEdges) {
+    const A = p[i].clone(); A.y += 4;
+    const B = p[j].clone(); B.y += 4;
+    const len = A.distanceTo(B);
+    if (len < 1) continue;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, len, 8), railMat);
+    m.position.copy(A).add(B).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+    meshes.push(m);
+  }
+  return meshes;
+}
+
 // 면 모드에서 채울 수 있는 면 미리보기 갱신
 const PREVIEW_MAT_BASE = { color: 0xffd23f, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false };
 function rebuildFacePreviews() {
@@ -588,11 +673,11 @@ function rebuildFacePreviews() {
     m.geometry?.dispose?.();
     m.material?.dispose?.();
   }
-  if (mode !== 'face') return;   // 면(1칸 사각형) 미리보기만
+  if (mode !== 'face' && mode !== 'holeface') return;   // 면·구멍면 모드에서만 미리보기
   for (const face of findFaces().values()) {
     if (panelExists(face.c)) continue;
     const mat = new THREE.MeshBasicMaterial({ ...PREVIEW_MAT_BASE });
-    const mesh = quadMesh(face.c.map(getJoint), mat, 0.88);
+    const mesh = (mode === 'holeface' ? holedQuadMesh : quadMesh)(face.c.map(getJoint), mat, 0.88);
     mesh.userData = { type: 'facepreview', face };
     facePreviewGroup.add(mesh);
   }
@@ -699,7 +784,7 @@ function refreshHandles() {
 function deleteSelected() {
   if (selection.length === 0) return;
   const del = (type) => new Set(selection.filter(s => s.type === type).map(s => s.id));
-  const delPipes = del('pipe'), delJoints = del('joint'), delPanels = del('panel'), delBridges = del('bridge');
+  const delPipes = del('pipe'), delJoints = del('joint'), delPanels = del('panel'), delBridges = del('bridge'), delSlides = del('slide');
   if (delJoints.size) {
     // 조인트 삭제 시 연결된 파이프도 함께 제거
     pipes = pipes.filter(p => !delJoints.has(p.a) && !delJoints.has(p.b));
@@ -709,6 +794,7 @@ function deleteSelected() {
   if (delPipes.size) pipes = pipes.filter(p => !delPipes.has(p.id));
   if (delPanels.size) panels = panels.filter(p => !delPanels.has(p.id));
   if (delBridges.size) bridges = bridges.filter(b => !delBridges.has(b.id));
+  if (delSlides.size) slides = slides.filter(s => !delSlides.has(s.id));
   pruneOrphanJoints();   // 파이프가 하나도 안 붙은 조인트는 함께 제거 (둥둥 뜬 조인트 방지)
   clearSel();
   rebuild();
@@ -729,6 +815,7 @@ function selectedJointIds() {
     else if (sel.type === 'pipe') { const p = pipes.find(x => x.id === sel.id); if (p) { s.add(p.a); s.add(p.b); } }
     else if (sel.type === 'panel') { const q = panels.find(x => x.id === sel.id); if (q) q.c.forEach(id => s.add(id)); }
     else if (sel.type === 'bridge') { const q = bridges.find(x => x.id === sel.id); if (q) q.c.forEach(id => s.add(id)); }
+    else if (sel.type === 'slide') { const q = slides.find(x => x.id === sel.id); if (q) q.c.forEach(id => s.add(id)); }
   }
   return s;
 }
@@ -752,7 +839,7 @@ function mergeCoincidentJoints() {
   }
   pipes = np;
   const fixQuad = arr => arr.map(x => { x.c = x.c.map(R); return x; }).filter(x => new Set(x.c).size === 4);
-  panels = fixQuad(panels); bridges = fixQuad(bridges);
+  panels = fixQuad(panels); bridges = fixQuad(bridges); slides = fixQuad(slides);
 }
 
 // ===== 그룹 =====
@@ -760,7 +847,8 @@ function memberExists(m) {
   return m.type === 'pipe' ? pipes.some(p => p.id === m.id)
     : m.type === 'joint' ? joints.some(j => j.id === m.id)
     : m.type === 'panel' ? panels.some(p => p.id === m.id)
-    : m.type === 'bridge' ? bridges.some(b => b.id === m.id) : false;
+    : m.type === 'bridge' ? bridges.some(b => b.id === m.id)
+    : m.type === 'slide' ? slides.some(s => s.id === m.id) : false;
 }
 function pruneGroups() {
   groups = groups.map(g => ({ ...g, m: g.m.filter(memberExists) })).filter(g => g.m.length >= 2);
@@ -782,6 +870,7 @@ function ungroupSelection() {
 }
 
 let bridgePicks = [];   // 흔들다리: 클릭한 매달 조인트 id들 (4개 모이면 생성)
+let slidePicks = [];    // 미끄럼틀: 클릭한 조인트 id들 (4개 모이면 생성)
 
 // ===== 그룹 장착(연결): 바닥 조인트 → 연결 조인트 → 대상 순으로 골라 기울여 붙임 =====
 let mountPhase = -1;                 // -1 비활성, 0 바닥, 1 연결, 2 대상
@@ -1093,12 +1182,12 @@ renderer.domElement.addEventListener('pointermove', (e) => {
     return;
   }
   // 메모/흔들다리 모드: 부품(조인트) 위에서만 커서 pointer
-  if (mode === 'memo' || mode === 'bridge') {
+  if (mode === 'memo' || mode === 'bridge' || mode === 'slide') {
     renderer.domElement.style.cursor = intersect(partsGroup.children).length ? 'pointer' : 'default';
     return;
   }
-  // 면 모드: 미리보기 강조
-  if (mode === 'face') {
+  // 면·구멍면 모드: 미리보기 강조
+  if (mode === 'face' || mode === 'holeface') {
     facePreviewGroup.children.forEach(m => m.material.opacity = PREVIEW_MAT_BASE.opacity);
     const targets = facePreviewGroup.children.concat(partsGroup.children.filter(m => m.userData.type === 'panel'));
     const hits = intersect(targets);
@@ -1235,13 +1324,32 @@ function handlePointerUp(e) {
     }
     return;
   }
-  // 0-1) 면 모드: 미리보기 클릭 → 판넬 채우기 / 판넬 클릭 → 선택
-  if (mode === 'face') {
+  // 0) 미끄럼틀 모드: 조인트 4개를 클릭하면 그 사각형에 미끄럼판이 걸린다
+  if (mode === 'slide') {
+    const hj = intersect(partsGroup.children.filter(m => m.userData.type === 'joint'));
+    if (hj.length) {
+      const id = hj[0].object.userData.id;
+      if (!slidePicks.includes(id)) slidePicks.push(id);
+      selection = slidePicks.map(i => ({ type: 'joint', id: i }));   // 선택 강조
+      if (slidePicks.length >= 4) {
+        const c = orderQuad(slidePicks.slice(0, 4));
+        if (!slideExists(c)) slides.push({ id: uid(), c });
+        slidePicks = []; clearSel(); rebuild(); updateBOM(); toast('미끄럼틀을 연결했습니다');
+      } else { rebuild(); toast(`미끄럼틀 조인트 ${slidePicks.length}/4 선택`); }
+    } else {   // 미끄럼틀 클릭 → 선택 / 빈 곳 → 취소
+      const hs = intersect(partsGroup.children.filter(m => m.userData.type === 'slide'));
+      if (hs.length) { slidePicks = []; selectOne('slide', hs[0].object.userData.id); rebuild(); updateBOM(); }
+      else { slidePicks = []; clearSel(); rebuild(); }
+    }
+    return;
+  }
+  // 0-1) 면·구멍면 모드: 미리보기 클릭 → 판넬 채우기 / 판넬 클릭 → 선택
+  if (mode === 'face' || mode === 'holeface') {
     const targets = facePreviewGroup.children.concat(partsGroup.children.filter(m => m.userData.type === 'panel'));
     const hits = intersect(targets);
     if (hits.length) {
       const o = hits[0].object;
-      if (o.userData.type === 'facepreview') { const face = o.userData.face; if (!panelExists(face.c)) panels.push({ id: uid(), c: face.c.slice() }); clearSel(); }
+      if (o.userData.type === 'facepreview') { const face = o.userData.face; if (!panelExists(face.c)) panels.push({ id: uid(), c: face.c.slice(), hole: mode === 'holeface' }); clearSel(); }
       else selectOne('panel', o.userData.id);
       rebuild(); updateBOM();
       return;
@@ -1276,7 +1384,7 @@ function handlePointerUp(e) {
     return;
   }
   // 2b) 판넬/흔들다리 클릭 → 선택 (조인트가 없을 때만 → 조인트 우선)
-  const hitPB = intersect(partsGroup.children.filter(m => ['panel', 'bridge'].includes(m.userData.type)));
+  const hitPB = intersect(partsGroup.children.filter(m => ['panel', 'bridge', 'slide'].includes(m.userData.type)));
   if (hitPB.length) {
     const o = hitPB[0].object;
     if (e.shiftKey) toggleSel(o.userData.type, o.userData.id); else selectOne(o.userData.type, o.userData.id);
@@ -1351,7 +1459,8 @@ function computeBOM() {
   const panelCount = {};   // 라벨 → 개수
   for (const panel of panels) {
     const [a, b] = panelSize(panel);
-    const label = a === b ? `면 ${a}×${a}cm` : `면 ${a}×${b}cm`;
+    const prefix = panel.hole ? '구멍면' : '면';
+    const label = a === b ? `${prefix} ${a}×${a}cm` : `${prefix} ${a}×${b}cm`;
     panelCount[label] = (panelCount[label] || 0) + 1;
   }
 
@@ -1361,7 +1470,14 @@ function computeBOM() {
     const label = `흔들다리 ${a}×${b}cm`;
     bridgeCount[label] = (bridgeCount[label] || 0) + 1;
   }
-  return { pipeCount, jointCount, panelCount, bridgeCount };
+
+  const slideCount = {};
+  for (const slide of slides) {
+    const [a, b] = slideSpan(slide);
+    const label = `미끄럼틀 ${a}×${b}cm`;
+    slideCount[label] = (slideCount[label] || 0) + 1;
+  }
+  return { pipeCount, jointCount, panelCount, bridgeCount, slideCount };
 }
 
 function computeDims() {
@@ -1394,16 +1510,34 @@ function updateDistInfo() {
   } else el.style.display = 'none';
 }
 
+// 현재 선택이 "한 조인트 종류 전체"면 그 종류를 반환 (BOM 강조 행 표시용)
+function highlightedJointType() {
+  const sj = selection.filter(s => s.type === 'joint');
+  if (!sj.length || sj.length !== selection.length) return null;
+  const types = new Set(sj.map(s => classifyJoint(s.id)));
+  if (types.size !== 1) return null;
+  const t = [...types][0];
+  const total = joints.filter(j => classifyJoint(j.id) === t).length;
+  return total === sj.length ? t : null;
+}
+// BOM에서 조인트 종류 클릭 → 그 종류 조인트 전체를 선택(강조). 같은 종류 다시 클릭 시 해제.
+function highlightJointType(t) {
+  const ids = joints.filter(j => classifyJoint(j.id) === t).map(j => j.id);
+  selection = highlightedJointType() === t ? [] : ids.map(id => ({ type: 'joint', id }));
+  activeJoint = null; handleGroup.visible = false; cubeGroup.visible = false;
+  rebuild(); updateBOM();
+}
+
 // ===== UI 렌더 =====
 function updateBOM() {
   updateEditPanel();
   updateDistInfo();
-  const { pipeCount, jointCount, panelCount, bridgeCount } = computeBOM();
+  const { pipeCount, jointCount, panelCount, bridgeCount, slideCount } = computeBOM();
 
   // 파이프
   const pipeEl = document.getElementById('bom-pipes');
   const JOINT_ORDER = ['마감캡', '1자', 'ㄱ자', 'T자', '3구', '4구', '5구', '6구'];
-  let totalPipes = 0, totalJoints = 0, totalPanels = 0, totalBridges = 0, pipeTypes = 0, jointTypes = 0, panelTypes = 0, bridgeTypes = 0;
+  let totalPipes = 0, totalJoints = 0, totalPanels = 0, totalBridges = 0, totalSlides = 0, pipeTypes = 0, jointTypes = 0, panelTypes = 0, bridgeTypes = 0, slideTypes = 0;
   let html = '<div class="bom-sub">파이프</div>';
   let anyPipe = false;
   for (const L of PIPE_LENGTHS) {
@@ -1415,18 +1549,22 @@ function updateBOM() {
   if (!anyPipe) html += '<div class="empty">아직 없음</div>';
   pipeEl.innerHTML = html;
 
-  // 조인트
+  // 조인트 (종류 클릭 시 해당 조인트들을 3D에서 강조)
   const jointEl = document.getElementById('bom-joints');
-  let jhtml = '<div class="bom-sub">조인트</div>';
+  const activeJType = highlightedJointType();
+  let jhtml = '<div class="bom-sub">조인트 <span class="bom-hint">클릭 → 위치 강조</span></div>';
   let anyJoint = false;
   for (const t of JOINT_ORDER) {
     const n = jointCount[t] || 0;
     if (n === 0) continue;
     anyJoint = true; totalJoints += n; jointTypes++;
-    jhtml += `<div class="bom-item"><span>${t}</span><span class="qty">${n}</span></div>`;
+    jhtml += `<div class="bom-item clickable${t === activeJType ? ' active' : ''}" data-jtype="${t}"><span>${t}</span><span class="qty">${n}</span></div>`;
   }
   if (!anyJoint) jhtml += '<div class="empty">아직 없음</div>';
   jointEl.innerHTML = jhtml;
+  jointEl.querySelectorAll('.bom-item[data-jtype]').forEach(el => {
+    el.addEventListener('click', () => highlightJointType(el.dataset.jtype));
+  });
 
   // 판넬(면)
   const panelEl = document.getElementById('bom-panels');
@@ -1453,10 +1591,23 @@ function updateBOM() {
     bridgeEl.innerHTML = bhtml;
   } else bridgeEl.innerHTML = '';
 
+  // 미끄럼틀
+  const slideEl = document.getElementById('bom-slides');
+  const slideLabels = Object.keys(slideCount).sort();
+  if (slideLabels.length) {
+    let shtml = '<div class="bom-sub">미끄럼틀</div>';
+    for (const label of slideLabels) {
+      const n = slideCount[label];
+      totalSlides += n; slideTypes++;
+      shtml += `<div class="bom-item"><span>${label}</span><span class="qty">${n}</span></div>`;
+    }
+    slideEl.innerHTML = shtml;
+  } else slideEl.innerHTML = '';
+
   // 합계 (총 수 + 종류 수)
   document.getElementById('bom-total').innerHTML =
-    `<div class="total-line"><span>총 부품 수</span><span>${totalPipes + totalJoints + totalPanels + totalBridges}개</span></div>` +
-    `<div class="total-line sub"><span>부품 종류</span><span>${pipeTypes + jointTypes + panelTypes + bridgeTypes}종류</span></div>`;
+    `<div class="total-line"><span>총 부품 수</span><span>${totalPipes + totalJoints + totalPanels + totalBridges + totalSlides}개</span></div>` +
+    `<div class="total-line sub"><span>부품 종류</span><span>${pipeTypes + jointTypes + panelTypes + bridgeTypes + slideTypes}종류</span></div>`;
 
   // 치수
   const dimsEl = document.getElementById('dims');
@@ -1540,7 +1691,7 @@ function updateEditPanel() {
 const LAST_KEY = 'junglegym:last';   // 마지막 불러온/저장한 설계 (localStorage)
 
 function currentDesign() {
-  return { joints, pipes, panels, bridges, notes, rulers, groups, activeLength, nextId };
+  return { joints, pipes, panels, bridges, slides, notes, rulers, groups, activeLength, nextId };
 }
 // localStorage에 최근 설계 기억
 function rememberLast(name, d) {
@@ -1561,11 +1712,12 @@ function applyLoaded(d) {
   pipes = d.pipes || [];
   panels = d.panels || [];
   bridges = d.bridges || [];
+  slides = d.slides || [];
   notes = d.notes || [];
   rulers = d.rulers || [];
   groups = d.groups || [];
   activeLength = d.activeLength || 20;
-  nextId = d.nextId || (Math.max(0, ...joints.map(j => j.id), ...pipes.map(p => p.id), ...panels.map(p => p.id), ...bridges.map(b => b.id), ...notes.map(n => n.id), ...rulers.map(r => r.id)) + 1);
+  nextId = d.nextId || (Math.max(0, ...joints.map(j => j.id), ...pipes.map(p => p.id), ...panels.map(p => p.id), ...bridges.map(b => b.id), ...slides.map(s => s.id), ...notes.map(n => n.id), ...rulers.map(r => r.id)) + 1);
   clearSel(); activeJoint = null; handleGroup.visible = false; cubeGroup.visible = false;
   buildPipeButtons(); rebuild(); updateBOM(); renderNotes(); rebuildRulers();
 }
@@ -1642,7 +1794,7 @@ function importJSON(file) {   // 폴백(파일 입력) 경로 — 핸들 없음
   reader.readAsText(file);
 }
 function copyBOM() {
-  const { pipeCount, jointCount, panelCount, bridgeCount } = computeBOM();
+  const { pipeCount, jointCount, panelCount, bridgeCount, slideCount } = computeBOM();
   const d = computeDims();
   let total = 0, types = 0;
   let txt = '[정글짐 부품표]\n\n파이프\n';
@@ -1659,6 +1811,11 @@ function copyBOM() {
   if (bLabels.length) {
     txt += '\n흔들다리\n';
     for (const label of bLabels) { txt += `  ${label} x ${bridgeCount[label]}\n`; total += bridgeCount[label]; types++; }
+  }
+  const sLabels = Object.keys(slideCount).sort();
+  if (sLabels.length) {
+    txt += '\n미끄럼틀\n';
+    for (const label of sLabels) { txt += `  ${label} x ${slideCount[label]}\n`; total += slideCount[label]; types++; }
   }
   txt += `\n총 부품 수: ${total}개 (${types}종류)\n`;
   if (d) {
@@ -1725,7 +1882,7 @@ function positionNotes() {
 // ===== 템플릿 / 크기 맞춤 생성 =====
 // 셀 좌표계: 한 칸 = (파이프 L + 조인트 5cm) 간격. cell [i,j,k] = x/높이(y)/z 번째 칸.
 function clearDesign() {
-  joints = []; pipes = []; panels = []; bridges = []; notes = []; groups = []; nextId = 1; selection = []; activeJoint = null;
+  joints = []; pipes = []; panels = []; bridges = []; slides = []; notes = []; groups = []; nextId = 1; selection = []; activeJoint = null;
   handleGroup.visible = false; cubeGroup.visible = false;
   renderNotes();
 }
@@ -1919,7 +2076,9 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
       mode === 'pipe' ? '길이를 고르고, 조인트를 클릭하면 방향 화살표가 나옵니다. 화살표를 클릭해 연결하세요.'
       : mode === 'cube' ? '빈 바닥을 클릭해 육면체를 놓고, 기존 육면체 위를 가리키면 그 위에 쌓입니다. 조인트 클릭 시 방향 화살표로도 붙일 수 있어요.'
       : mode === 'face' ? '파이프 4개가 사각형을 이룬 면이 반투명으로 표시됩니다. 클릭하면 판넬이 채워집니다.'
+      : mode === 'holeface' ? '파이프 4개가 사각형을 이룬 면이 표시됩니다. 클릭하면 가운데가 뚫린 면이 채워집니다.'
       : mode === 'bridge' ? '흔들다리를 매달 조인트 4개를 클릭하면 그 사각형에 밧줄 다리가 매달립니다.'
+      : mode === 'slide' ? '미끄럼틀을 걸 조인트 4개를 클릭하면 그 사각형에 경사 미끄럼판이 걸립니다. (위쪽 두 조인트를 높게 두면 경사가 생깁니다)'
       : mode === 'memo' ? '부품(조인트·파이프)을 클릭하면 그 위치에 메모를 남길 수 있습니다.'
       : mode === 'ruler' ? '바닥을 드래그해 선을 긋고 길이(cm)를 입력하면 초록 줄자가 표시됩니다. (전체 크기 가늠용)'
       : mode === 'mount' ? '그룹을 구조에 기울여 붙입니다. 아래 단계 안내를 따라 조인트를 클릭하세요.'
@@ -1929,7 +2088,7 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     activeJoint = null;
     stopPlacing();          // 모드 전환 시 배치 취소
     clearGhost(); ghostGroup.visible = false;
-    hideSelectBox(); hideRulerPreview(); rulerStart = null; moving = null; bridgePicks = [];
+    hideSelectBox(); hideRulerPreview(); rulerStart = null; moving = null; bridgePicks = []; slidePicks = [];
     mountReset();
     document.getElementById('ruler-section').style.display = mode === 'ruler' ? 'block' : 'none';
     document.getElementById('mount-section').style.display = mode === 'mount' ? 'block' : 'none';
@@ -1937,7 +2096,7 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     applyControlButtons();  // 선택 모드 진입/이탈 시 마우스 버튼 매핑 갱신
     refreshHandles();
     rebuildFacePreviews();   // 면 모드 진입 시 미리보기 갱신
-    if (mode === 'face') {
+    if (mode === 'face' || mode === 'holeface') {
       const n = facePreviewGroup.children.length;
       if (n) toast(`채울 수 있는 면 ${n}곳`);
     }
