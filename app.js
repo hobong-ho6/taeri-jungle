@@ -1477,7 +1477,21 @@ function computeBOM() {
     const label = `미끄럼틀 ${a}×${b}cm`;
     slideCount[label] = (slideCount[label] || 0) + 1;
   }
-  return { pipeCount, jointCount, panelCount, bridgeCount, slideCount };
+
+  // 클립: 파이프 양끝 구멍 2개 = 파이프당 클립 2개. 면(판넬) 둘레 파이프는 대 클립, 나머지는 소 클립.
+  const panelEdgePipes = new Set();
+  for (const panel of panels) {
+    for (let i = 0; i < 4; i++) {
+      const pipe = pipeBetween(panel.c[i], panel.c[(i + 1) % 4]);
+      if (pipe) panelEdgePipes.add(pipe.id);
+    }
+  }
+  let clipLarge = 0, clipSmall = 0;
+  for (const p of pipes) {
+    if (panelEdgePipes.has(p.id)) clipLarge += 2; else clipSmall += 2;
+  }
+  clipLarge += slides.length * 4;   // 미끄럼틀 1개당 대 클립 4개 (네 조인트 고정). 흔들다리는 클립 없음.
+  return { pipeCount, jointCount, panelCount, bridgeCount, slideCount, clipLarge, clipSmall };
 }
 
 function computeDims() {
@@ -1532,7 +1546,7 @@ function highlightJointType(t) {
 function updateBOM() {
   updateEditPanel();
   updateDistInfo();
-  const { pipeCount, jointCount, panelCount, bridgeCount, slideCount } = computeBOM();
+  const { pipeCount, jointCount, panelCount, bridgeCount, slideCount, clipLarge, clipSmall } = computeBOM();
 
   // 파이프
   const pipeEl = document.getElementById('bom-pipes');
@@ -1604,10 +1618,21 @@ function updateBOM() {
     slideEl.innerHTML = shtml;
   } else slideEl.innerHTML = '';
 
+  // 클립(체결) — 파이프 양끝 구멍에 조인트와 결합. 면 둘레는 대 클립, 나머지는 소 클립.
+  const clipEl = document.getElementById('bom-clips');
+  const clipTotal = clipLarge + clipSmall;
+  if (clipTotal) {
+    clipEl.innerHTML = '<div class="bom-sub">클립(체결) <span class="bom-hint">파이프 양끝 구멍</span></div>' +
+      `<div class="bom-item"><span>대 클립 <small>면 고정</small></span><span class="qty">${clipLarge}</span></div>` +
+      `<div class="bom-item"><span>소 클립</span><span class="qty">${clipSmall}</span></div>` +
+      `<div class="bom-item clip-total"><span>클립 합계</span><span class="qty">${clipTotal}</span></div>`;
+  } else clipEl.innerHTML = '';
+
   // 합계 (총 수 + 종류 수)
   document.getElementById('bom-total').innerHTML =
     `<div class="total-line"><span>총 부품 수</span><span>${totalPipes + totalJoints + totalPanels + totalBridges + totalSlides}개</span></div>` +
-    `<div class="total-line sub"><span>부품 종류</span><span>${pipeTypes + jointTypes + panelTypes + bridgeTypes + slideTypes}종류</span></div>`;
+    `<div class="total-line sub"><span>부품 종류</span><span>${pipeTypes + jointTypes + panelTypes + bridgeTypes + slideTypes}종류</span></div>` +
+    `<div class="total-line sub"><span>클립 합계</span><span>${clipTotal}개 (대 ${clipLarge} · 소 ${clipSmall})</span></div>`;
 
   // 치수
   const dimsEl = document.getElementById('dims');
@@ -1794,7 +1819,7 @@ function importJSON(file) {   // 폴백(파일 입력) 경로 — 핸들 없음
   reader.readAsText(file);
 }
 function copyBOM() {
-  const { pipeCount, jointCount, panelCount, bridgeCount, slideCount } = computeBOM();
+  const { pipeCount, jointCount, panelCount, bridgeCount, slideCount, clipLarge, clipSmall } = computeBOM();
   const d = computeDims();
   let total = 0, types = 0;
   let txt = '[정글짐 부품표]\n\n파이프\n';
@@ -1818,6 +1843,7 @@ function copyBOM() {
     for (const label of sLabels) { txt += `  ${label} x ${slideCount[label]}\n`; total += slideCount[label]; types++; }
   }
   txt += `\n총 부품 수: ${total}개 (${types}종류)\n`;
+  if (clipLarge + clipSmall) txt += `\n클립\n  대 클립(면 고정) x ${clipLarge}\n  소 클립 x ${clipSmall}\n  클립 합계 x ${clipLarge + clipSmall}\n`;
   if (d) {
     const f = (v) => Math.round(v * 10) / 10;
     txt += `\n최종 치수: ${f(d.outer.x)} x ${f(d.outer.z)} x ${f(d.outer.y)} cm (가로x세로x높이)\n`;
