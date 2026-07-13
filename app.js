@@ -280,9 +280,22 @@ const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
 dir2.position.set(-120, 60, -100);
 scene.add(dir2);
 
-// 바닥 그리드 (10cm 간격)
-const grid = new THREE.GridHelper(600, 60, 0x3a404d, 0x2a2e37);
+// 바닥 그리드 (10cm 간격) — 설계 크기에 맞춰 자동 확장/축소
+let gridSize = 600;
+let grid = new THREE.GridHelper(gridSize, gridSize / 10, 0x3a404d, 0x2a2e37);
 scene.add(grid);
+// 조인트 범위(±최대 좌표)를 덮도록 그리드 크기 갱신 (100cm 단위, 최소 600)
+function updateGrid() {
+  let ext = 0;
+  for (const j of joints) ext = Math.max(ext, Math.abs(j.x), Math.abs(j.z));
+  const needed = Math.max(600, Math.ceil((2 * (ext + 60)) / 100) * 100);
+  if (needed === gridSize) return;
+  gridSize = needed;
+  scene.remove(grid);
+  grid.geometry.dispose(); grid.material.dispose();
+  grid = new THREE.GridHelper(gridSize, gridSize / 10, 0x3a404d, 0x2a2e37);
+  scene.add(grid);
+}
 const axes = new THREE.AxesHelper(30);
 scene.add(axes);
 
@@ -572,6 +585,7 @@ function rebuild() {
   bridges = bridges.filter(bridgeValid);   // 흔들다리: 임의 크기 닫힌 사각형(변=파이프체인)
   slides = slides.filter(slideValid);      // 미끄럼틀: 네 조인트 유효성 확인
   pruneGroups();                           // 사라진 멤버 정리
+  updateGrid();                            // 설계 범위에 맞춰 바닥 그리드 크기 조정
 
   // 기존 메쉬 제거
   while (partsGroup.children.length) {
@@ -1156,12 +1170,24 @@ function boxSelect(x0, y0, x1, y1, additive) {
     const sx = (v.x * 0.5 + 0.5) * r.width, sy = (-v.y * 0.5 + 0.5) * r.height;
     return sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
   };
+  const pick = (type, id, pt) => {
+    if (isHidden(type, id) || !pt) return;   // 숨긴 것은 박스선택 제외
+    if (inBox(pt) && !isSelected(type, id)) selection.push({ type, id });
+  };
+  const quadCenter = (ids) => {
+    const c = ids.map(getJoint);
+    if (c.some(x => !x)) return null;
+    return new THREE.Vector3((c[0].x + c[1].x + c[2].x + c[3].x) / 4, (c[0].y + c[1].y + c[2].y + c[3].y) / 4, (c[0].z + c[1].z + c[2].z + c[3].z) / 4);
+  };
+  // 드래그 영역 안의 모든 오브젝트: 조인트·파이프·면·흔들다리·미끄럼틀
+  for (const j of joints) pick('joint', j.id, new THREE.Vector3(j.x, j.y, j.z));
   for (const p of pipes) {
-    if (isHidden('pipe', p.id)) continue;   // 숨긴 파이프는 박스선택 대상 제외
     const a = getJoint(p.a), b = getJoint(p.b); if (!a || !b) continue;
-    const mid = new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-    if (inBox(mid) && !isSelected('pipe', p.id)) selection.push({ type: 'pipe', id: p.id });
+    pick('pipe', p.id, new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2));
   }
+  for (const panel of panels) pick('panel', panel.id, quadCenter(panel.c));
+  for (const bridge of bridges) pick('bridge', bridge.id, quadCenter(bridge.c));
+  for (const slide of slides) pick('slide', slide.id, quadCenter(slide.c));
   rebuild(); updateBOM();
 }
 
