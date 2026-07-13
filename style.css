@@ -119,6 +119,14 @@ ul.hint li { margin-bottom: 4px; }
 }
 .ruler-dir-btn:hover { border-color: #22c55e; }
 .ruler-dir-btn.active { background: #22c55e; color: #0a2a12; border-color: #22c55e; }
+.rect-dir-btn {
+  flex: 1 1 0; min-width: 0; padding: 9px 4px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-2); color: var(--text);
+  cursor: pointer; font-size: 12px; font-weight: 600; transition: all .12s;
+}
+.rect-dir-btn:hover { border-color: var(--accent-2); }
+.rect-dir-btn.active { background: var(--accent-2); color: #fff; border-color: var(--accent-2); }
 .view-btn:hover, .plane-btn:hover { border-color: var(--accent); }
 .view-btn.active, .plane-btn.active {
   background: var(--accent);
@@ -223,6 +231,13 @@ button.ghost:disabled:hover { border-color: var(--line); }
 .bom-item.clip-total { background: transparent; border-top: 1px dashed var(--line); border-radius: 0; margin-top: 6px; padding-top: 9px; font-weight: 700; }
 .bom-sub { font-size: 11px; color: var(--muted); margin: 10px 0 6px; }
 .bom-hint { color: var(--accent-2); font-weight: 500; }
+
+/* 특수 커넥터 수동 입력 */
+.sp-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-radius: 6px; font-size: 13px; margin-bottom: 6px; background: var(--panel-2); }
+.stepper { display: flex; align-items: center; gap: 10px; }
+.stepper b { min-width: 20px; text-align: center; font-weight: 700; color: var(--accent); }
+.sp-btn { width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; font-size: 16px; line-height: 1; }
+.sp-btn:hover { border-color: var(--accent-2); }
 .total {
   margin-top: 12px;
   padding-top: 12px;

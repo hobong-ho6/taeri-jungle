@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="정글짐" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=79" />
+  <link rel="stylesheet" href="style.css?v=82" />
 </head>
 <body>
   <div id="app">
@@ -37,6 +37,7 @@
         <div id="mode-buttons" class="btn-row">
           <button class="mode-btn active" data-mode="pipe">🧵 파이프</button>
           <button class="mode-btn" data-mode="cube">🧊 육면체</button>
+          <button class="mode-btn" data-mode="rect">🔲 사각형</button>
           <button class="mode-btn" data-mode="face">🟨 면</button>
           <button class="mode-btn" data-mode="holeface">🕳 구멍면</button>
           <button class="mode-btn" data-mode="bridge">🌉 흔들다리</button>
@@ -58,6 +59,16 @@
         <p class="note" id="mount-info"></p>
         <button id="btn-mount-next" class="ghost full">다음 단계 ▶</button>
         <p class="note">기존과 떨어진 그룹의 ①바닥 조인트 → ②연결 조인트 → ③붙일 대상 순으로 클릭하면, 바닥을 기준으로 기울여 붙입니다.</p>
+      </section>
+
+      <section class="group" id="rect-section" style="display:none;">
+        <h2>사각형 방향</h2>
+        <div class="btn-row">
+          <button class="rect-dir-btn" data-rdir="floor">바닥(눕힘)</button>
+          <button class="rect-dir-btn active" data-rdir="front">앞벽(세움)</button>
+          <button class="rect-dir-btn" data-rdir="side">옆벽(세움)</button>
+        </div>
+        <p class="note">가로 = 파이프 길이, 세로 = 육면체 높이. 바닥형은 위로 쌓이고, 벽형은 바닥부터 섭니다.</p>
       </section>
 
       <section class="group" id="ruler-section" style="display:none;">
@@ -114,8 +125,10 @@
         </ul>
         <div class="btn-row">
           <button id="btn-delete" class="ghost">선택 삭제</button>
+          <button id="btn-hide" class="ghost">🙈 선택 숨기기</button>
           <button id="btn-reset" class="ghost">전체 초기화</button>
         </div>
+        <button id="btn-unhide" class="ghost full" disabled>👁 숨김 해제 (0)</button>
       </section>
 
       <section class="group">
@@ -151,17 +164,37 @@
         <div id="bom-bridges"></div>
         <div id="bom-slides"></div>
         <div id="bom-clips"></div>
+        <div id="bom-special"></div>
         <div id="bom-total" class="total"></div>
         <button id="btn-copy" class="ghost full">BOM 텍스트 복사</button>
+      </section>
+
+      <section class="group">
+        <h2>특수 커넥터 <span class="sub-h">／ 수동 입력</span></h2>
+        <p class="note">지붕·안경은 경사·평행 커넥터라 자동 인식이 안 됩니다. 개수를 직접 세어 입력하세요.</p>
+        <div class="sp-row"><span>🏠 지붕</span>
+          <span class="stepper">
+            <button class="sp-btn" data-sp="roof" data-d="-1">−</button>
+            <b id="sp-roof">0</b>
+            <button class="sp-btn" data-sp="roof" data-d="1">+</button>
+          </span>
+        </div>
+        <div class="sp-row"><span>👓 안경</span>
+          <span class="stepper">
+            <button class="sp-btn" data-sp="glasses" data-d="-1">−</button>
+            <b id="sp-glasses">0</b>
+            <button class="sp-btn" data-sp="glasses" data-d="1">+</button>
+          </span>
+        </div>
       </section>
 
       <section class="group">
         <h2>조인트 판정 규칙</h2>
         <p class="note">
           조인트는 한 지점에 꽂힌 파이프의 개수·방향으로 결정됩니다.<br />
-          1개 → 마감캡 · 2개 일직선 → 1자 · 2개 꺾임 → ㄱ자<br />
+          1개 → 1구 · 2개 일직선 → 1자 · 2개 꺾임 → 2구<br />
           3개 T형(일직선+수직) → T자 · 3개 직각코너 → 3구<br />
-          4개 → 4구 · 5개 → 5구 · 6개 → 6구
+          4개 평면 십자 → +자 · 4개 입체 → 4구 · 5개 → 5구 · 6개 → 6구
         </p>
       </section>
     </aside>
@@ -171,6 +204,6 @@
 
   <script src="vendor/three.min.js"></script>
   <script src="vendor/OrbitControls.js"></script>
-  <script src="app.js?v=79"></script>
+  <script src="app.js?v=82"></script>
 </body>
 </html>
