@@ -94,6 +94,8 @@ ul.hint li { margin-bottom: 4px; }
   color: #fff;
   border-color: var(--accent-2);
 }
+/* 선택 모드 — 전체폭 강조 버튼 */
+.mode-btn.wide { display: block; width: 100%; flex: none; padding: 12px 4px; font-size: 14px; }
 
 /* 보기(2D/3D) · 평면 버튼 */
 .view-btn, .plane-btn {
@@ -135,21 +137,6 @@ ul.hint li { margin-bottom: 4px; }
 }
 
 /* 템플릿 목록 */
-.tpl-list { display: flex; flex-direction: column; gap: 6px; }
-.tpl-btn {
-  padding: 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel-2);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 13px;
-  text-align: left;
-  transition: all .12s;
-}
-.tpl-btn:hover { border-color: var(--accent); background: #363c49; }
-.tpl-btn.active { background: var(--accent-2); color: #fff; border-color: var(--accent-2); }
-
 /* 크기 입력 */
 .size-row { display: flex; gap: 6px; margin-bottom: 8px; }
 .size-row input {
