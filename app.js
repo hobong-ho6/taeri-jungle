@@ -54,6 +54,21 @@ function toggleSel(type, id) {
 }
 let mode = 'pipe';     // 'pipe' | 'cube' | 'rect' | ...
 let rectDir = 'front'; // 사각형 방향: 'floor'(바닥 XZ) | 'front'(앞벽 XY) | 'side'(옆벽 ZY)
+let heightCut = { on: false, y: 100 };   // 높이 필터(Threshold): 이 높이 위 부품은 화면에서 숨김(뷰 전용)
+// 높이 y가 Threshold 위라 잘려야 하면 true
+function aboveCut(y) { return heightCut.on && y > heightCut.y + 0.5; }
+// 사각형(4조인트)의 가장 높은 꼭짓점 y
+function quadTopY(ids) { return Math.max(...ids.map(id => (getJoint(id) || { y: 0 }).y)); }
+// 높이 필터 슬라이더 최대값을 설계 최고 높이에 맞춤
+function updateThresholdRange() {
+  const range = document.getElementById('thr-range');
+  if (!range) return;
+  let maxY = 0;
+  for (const j of joints) maxY = Math.max(maxY, j.y);
+  const max = Math.max(100, Math.ceil((maxY + 5) / 5) * 5);
+  range.max = max;
+  if (heightCut.y > max) { heightCut.y = max; range.value = max; document.getElementById('thr-val').textContent = max + 'cm'; }
+}
 
 // 육면체 옥탄트 8방향 (조인트를 한 꼭짓점으로 두고 뻗는 방향)
 const OCTANTS = [];
@@ -587,6 +602,7 @@ function rebuild() {
   slides = slides.filter(slideValid);      // 미끄럼틀: 네 조인트 유효성 확인
   pruneGroups();                           // 사라진 멤버 정리
   updateGrid();                            // 설계 범위에 맞춰 바닥 그리드 크기 조정
+  updateThresholdRange();                  // 높이 필터 슬라이더 최대값 갱신
 
   // 기존 메쉬 제거
   while (partsGroup.children.length) {
@@ -597,7 +613,7 @@ function rebuild() {
 
   // 조인트
   for (const j of joints) {
-    if (isHidden('joint', j.id)) continue;
+    if (isHidden('joint', j.id) || aboveCut(j.y)) continue;
     const isSel = isSelected('joint', j.id);
     const mat = new THREE.MeshStandardMaterial({
       color: isSel ? 0x4aa3ff : 0x222831,
@@ -615,6 +631,7 @@ function rebuild() {
     if (isHidden('pipe', p.id)) continue;
     const a = getJoint(p.a), b = getJoint(p.b);
     if (!a || !b) continue;
+    if (aboveCut(Math.max(a.y, b.y))) continue;   // 윗끝이 Threshold 위면 숨김
     const va = new THREE.Vector3(a.x, a.y, a.z);
     const vb = new THREE.Vector3(b.x, b.y, b.z);
     const mid = va.clone().add(vb).multiplyScalar(0.5);
@@ -637,7 +654,7 @@ function rebuild() {
 
   // 판넬(면)
   for (const panel of panels) {
-    if (isHidden('panel', panel.id)) continue;
+    if (isHidden('panel', panel.id) || aboveCut(quadTopY(panel.c))) continue;
     const isSel = isSelected('panel', panel.id);
     const mat = new THREE.MeshStandardMaterial({
       color: isSel ? 0x4aa3ff : 0xf5df7a,
@@ -652,7 +669,7 @@ function rebuild() {
 
   // 흔들다리
   for (const bridge of bridges) {
-    if (isHidden('bridge', bridge.id)) continue;
+    if (isHidden('bridge', bridge.id) || aboveCut(quadTopY(bridge.c))) continue;
     const isSel = isSelected('bridge', bridge.id);
     for (const m of bridgeMeshes(bridge, isSel)) {
       m.userData = { type: 'bridge', id: bridge.id };
@@ -662,7 +679,7 @@ function rebuild() {
 
   // 미끄럼틀
   for (const slide of slides) {
-    if (isHidden('slide', slide.id)) continue;
+    if (isHidden('slide', slide.id) || aboveCut(quadTopY(slide.c))) continue;
     const isSel = isSelected('slide', slide.id);
     for (const m of slideMeshes(slide, isSel)) {
       m.userData = { type: 'slide', id: slide.id };
@@ -672,7 +689,7 @@ function rebuild() {
 
   // 참고 박스(반투명 육면체 — 파이프 아님)
   for (const bx of boxes) {
-    if (isHidden('box', bx.id)) continue;
+    if (isHidden('box', bx.id) || aboveCut(bx.y)) continue;   // 바닥 높이 기준
     const isSel = isSelected('box', bx.id);
     const geo = new THREE.BoxGeometry(bx.w, bx.h, bx.d);
     const mat = new THREE.MeshStandardMaterial({
@@ -1195,7 +1212,7 @@ function boxSelect(x0, y0, x1, y1, additive) {
     return sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
   };
   const pick = (type, id, pt) => {
-    if (isHidden(type, id) || !pt) return;   // 숨긴 것은 박스선택 제외
+    if (isHidden(type, id) || !pt || aboveCut(pt.y)) return;   // 숨김·높이필터로 안 보이는 건 제외
     if (inBox(pt) && !isSelected(type, id)) selection.push({ type, id });
   };
   const quadCenter = (ids) => {
@@ -2203,6 +2220,20 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
 });
 
 // 버튼 바인딩
+// 높이 필터(Threshold)
+{
+  const thrOn = document.getElementById('thr-on');
+  const thrRange = document.getElementById('thr-range');
+  const thrVal = document.getElementById('thr-val');
+  thrOn.addEventListener('change', () => { heightCut.on = thrOn.checked; rebuild(); });
+  thrRange.addEventListener('input', () => {
+    heightCut.y = +thrRange.value;
+    thrVal.textContent = thrRange.value + 'cm';
+    heightCut.on = true;
+    thrOn.checked = true;
+    rebuild();
+  });
+}
 document.getElementById('btn-add-box').addEventListener('click', () => {
   const w = parseFloat(document.getElementById('box-w').value);
   const d = parseFloat(document.getElementById('box-d').value);

@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="정글짐" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=86" />
+  <link rel="stylesheet" href="style.css?v=87" />
 </head>
 <body>
   <div id="app">
@@ -30,6 +30,16 @@
           <button class="plane-btn" data-plane="front">앞(정면)</button>
           <button class="plane-btn" data-plane="side">옆(측면)</button>
         </div>
+      </section>
+
+      <section class="group">
+        <h2>높이 필터 <span class="sub-h">／ Threshold</span></h2>
+        <label class="thr-toggle"><input type="checkbox" id="thr-on" /> 이 높이까지만 보기</label>
+        <div class="thr-row">
+          <input type="range" id="thr-range" min="0" max="100" step="5" value="100" />
+          <span id="thr-val" class="thr-val">100cm</span>
+        </div>
+        <p class="hint">설정한 높이보다 위의 부품을 숨깁니다. 바닥부터 층별로 보며 쌓을 때 사용하세요. (화면만 숨김 · 부품 수엔 영향 없음)</p>
       </section>
 
       <section class="group">
@@ -205,6 +215,6 @@
 
   <script src="vendor/three.min.js"></script>
   <script src="vendor/OrbitControls.js"></script>
-  <script src="app.js?v=86"></script>
+  <script src="app.js?v=87"></script>
 </body>
 </html>

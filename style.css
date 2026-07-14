@@ -97,6 +97,13 @@ ul.hint li { margin-bottom: 4px; }
 /* 선택 모드 — 전체폭 강조 버튼 */
 .mode-btn.wide { display: block; width: 100%; flex: none; padding: 12px 4px; font-size: 14px; }
 
+/* 높이 필터(Threshold) */
+.thr-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; margin-bottom: 10px; }
+.thr-toggle input { width: 16px; height: 16px; accent-color: var(--accent-2); }
+.thr-row { display: flex; align-items: center; gap: 10px; }
+.thr-row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent-2); cursor: pointer; }
+.thr-val { font-size: 13px; font-weight: 700; color: var(--accent-2); min-width: 54px; text-align: right; }
+
 /* 보기(2D/3D) · 평면 버튼 */
 .view-btn, .plane-btn {
   flex: 1 1 0;
