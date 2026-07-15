@@ -1605,6 +1605,10 @@ window.addEventListener('keydown', (e) => {
   if (meta && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
   if (meta && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') withUndo(deleteSelected);
+  const tag = e.target.tagName;
+  if (meta || e.altKey || tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+  if (e.key === 'v' || e.key === 'V') document.querySelector('.mode-btn[data-mode="select"]')?.click();
+  if (e.key === 'p' || e.key === 'P') document.querySelector('.mode-btn[data-mode="pipe"]')?.click();
 });
 
 // 방향 목록에 정반대(일직선) 쌍이 있으면 true
